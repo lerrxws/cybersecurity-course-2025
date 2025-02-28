@@ -193,6 +193,10 @@ The script will output detailed results for each test case and provide a summary
 ```sh
 gcc -o zadanie1 zadanie1.c -Wall -Wextra
 ```
+or
+```sh
+make zadanie1
+```
 
 ## 👨‍💻 Author
 Valeriia Buhaiova  
