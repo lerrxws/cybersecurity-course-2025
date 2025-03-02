@@ -15,6 +15,7 @@
 #include <wchar.h>
 
 // pre-define values for aes algo
+#define MAX_FILE_SIZE 100000000
 #define KEY_SIZE 16
 #define BLOCK_SIZE 16
 #define ROUNDS 10
@@ -405,14 +406,21 @@ int main(int argc, char *argv[]) {
         }
     
         size_t actualFileSize;
-    
         // compute size of file
         fread(&actualFileSize, sizeof(size_t), 1, file);
-        if (actualFileSize <= 0 || actualFileSize % BLOCK_SIZE != 0) { 
+        if (actualFileSize <= 0 ||  actualFileSize > MAX_FILE_SIZE || actualFileSize % BLOCK_SIZE != 0) { 
             fseek(file, 0, SEEK_END);
             actualFileSize = ftell(file);
             rewind(file);
         }
+        *fileSize = actualFileSize;
+    
+        // Validate file size
+        if (actualFileSize <= 0) {
+            fclose(file);
+            return NULL;
+        }
+    
         *fileSize = actualFileSize;
     
         // allocate memory for file data (+1 for null terminator)
