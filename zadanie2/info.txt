@@ -1,0 +1,10 @@
+user1:password123
+user2:123456
+user3:qwerty
+user4:letmein
+user5:welcome
+user6:abc123
+user7:password1
+user8:123123
+user9:admin
+user10:pass123
