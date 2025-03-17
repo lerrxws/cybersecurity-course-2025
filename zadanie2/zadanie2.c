@@ -35,7 +35,8 @@
 struct UserInfo {
     char *name;
     char *hashedPassword;
-    char *auth_passwords[MAX_AUTH_KEYS];
+    char **auth_passwords;
+    int num_auth_keys;
 };
 
 #pragma region Definitions
@@ -47,7 +48,7 @@ struct UserInfo {
     int deleteOneTimeAuthKeyFromSystem(const char *authKey, const char *user);
     char **read_file_by_line();
     int write_user_info_into_csv(struct UserInfo userInfo[USERS_COUNT]);
-    int checkAuthKey(const char *authKey, const char *userAuthKeys[MAX_AUTH_KEYS]);
+    int checkAuthKey(const char *authKey, const char **userAuthKeys, int numKeys);
     char **createAuthKeys(const int userIndex);
     int parseUserInfo(struct UserInfo *user, char *line, int userIndex);
     int verify_user_credentials(const char *name, const char *password, const char *auth_key);
@@ -89,7 +90,7 @@ int main() {
 
         return EXIT_FAILURE;
     }
-
+    
     // verify user using 2FA
     int isVerified = verify_user_credentials(name, password, auth_key);
     if(isVerified != 0) {
@@ -118,7 +119,7 @@ int main() {
         if (!userInfo) {
             return EXIT_FAILURE;
         }
-    
+        
         // Hash the provided password
         char *hashedPassword = generate_hashed_password(password);
         if (!hashedPassword) {
@@ -126,7 +127,7 @@ int main() {
             free(userInfo);
             return EXIT_FAILURE;
         }
-    
+
         // Compare stored and entered hashed passwords
         if (strcmp(userInfo->hashedPassword, hashedPassword) != 0) {
             free(hashedPassword);
@@ -134,9 +135,9 @@ int main() {
             free(userInfo);
             return EXIT_FAILURE;
         }
-    
+
         // Check authentication key (2FA)
-        if (checkAuthKey(auth_key, (const char **)userInfo->auth_passwords) != EXIT_SUCCESS) {
+        if (checkAuthKey(auth_key, (const char **)userInfo->auth_passwords, userInfo->num_auth_keys) != EXIT_SUCCESS) {
             free(hashedPassword);
             freeUserInfo(userInfo);
             free(userInfo);
@@ -299,25 +300,32 @@ int main() {
         }
 
         // write a header for csvFile
-        fprintf(csvFile, "Username,Hashed Password,OTP_1,OTP_2,OTP_3,OTP_4,OTP_5,OTP_6,OTP_7,OTP_8,OTP_9,OTP_10\n");
+        fprintf(csvFile, "Username:Hashed Password:OTP_KEYS\n");
         
         int validUsers = 0;
         for (int i = 0; i < USERS_COUNT; i++) {
+            // if (!userInfo || !userInfo[i]) {
+            //     continue;
+            // }
             // check if user data is valid
             if (!userInfo[i].name || !userInfo[i].hashedPassword) {
                 continue;
             }
-    
+            
             // write user name and hashed password
-            fprintf(csvFile, "%s,%s", userInfo[i].name, userInfo[i].hashedPassword);
+            fprintf(csvFile, "%s:%s:", userInfo[i].name, userInfo[i].hashedPassword);
     
             // write authentication keys
-            for (int j = 0; j < MAX_AUTH_KEYS; j++) {
+            for (int j = 0; j < userInfo[i].num_auth_keys; j++) {
                 if (userInfo[i].auth_passwords[j]) {
-                    fprintf(csvFile, ",%s", userInfo[i].auth_passwords[j]);
+                    if(j == userInfo[i].num_auth_keys - 1 || (j < userInfo[i].num_auth_keys - 1 && !userInfo[i].auth_passwords[j + 1])) {
+                        fprintf(csvFile, "%s", userInfo[i].auth_passwords[j]);
+                    } else {
+                        fprintf(csvFile, "%s,", userInfo[i].auth_passwords[j]);
+                    }
                 } else {
                     // empty field for missing auth keys
-                    fprintf(csvFile, ",");
+                    // fprintf(csvFile, ",");
                 }
             }
             
@@ -350,7 +358,7 @@ int main() {
             free(userInfo->hashedPassword);
             userInfo->hashedPassword = NULL;
         }
-        for (int i = 0; i < MAX_AUTH_KEYS; i++) {
+        for (int i = 0; i < userInfo->num_auth_keys; i++) {
             if (userInfo->auth_passwords[i]) {
                 free(userInfo->auth_passwords[i]);
                 userInfo->auth_passwords[i] = NULL;
@@ -377,92 +385,55 @@ int main() {
     
         char *ptr = copy;  // Use a separate pointer for parsing
     
-        usersInfo->name = strdup(strsep(&ptr, ","));
+        usersInfo->name = strdup(strsep(&ptr, ":"));
         if (!usersInfo->name) {
             free(copy);
             return EXIT_FAILURE;
         }
     
-        usersInfo->hashedPassword = strdup(strsep(&ptr, ","));
+        usersInfo->hashedPassword = strdup(strsep(&ptr, ":"));
         if (!usersInfo->hashedPassword) {
             free(copy);
             free(usersInfo->name);
             return EXIT_FAILURE;
         }
-    
-        for (int i = 0; i < MAX_AUTH_KEYS; i++) {
+        
+        // Initialize auth keys array
+        usersInfo->auth_passwords = NULL;
+        usersInfo->num_auth_keys = 0;
+
+        while (ptr && *ptr != '\0') {
             char *authKey = strsep(&ptr, ",\n");
-            if (authKey && *authKey == '\0') {
-                usersInfo->auth_passwords[i] = NULL;
-            } else {
-                usersInfo->auth_passwords[i] = strdup(authKey);
-                if (!usersInfo->auth_passwords[i]) {
+            if (authKey && *authKey != '\0') {
+                // Increase key count and reallocate memory
+                usersInfo->num_auth_keys++;
+                usersInfo->auth_passwords = realloc(usersInfo->auth_passwords, usersInfo->num_auth_keys * sizeof(char *));
+                if (!usersInfo->auth_passwords) {
                     free(copy);
                     free(usersInfo->name);
                     free(usersInfo->hashedPassword);
-                    for (int j = 0; j < i; j++) {
-                        free(usersInfo->auth_passwords[j]);
+                    return EXIT_FAILURE;
+                }
+
+                // Store the key
+                usersInfo->auth_passwords[usersInfo->num_auth_keys - 1] = strdup(authKey);
+                if (!usersInfo->auth_passwords[usersInfo->num_auth_keys - 1]) {
+                    free(copy);
+                    free(usersInfo->name);
+                    free(usersInfo->hashedPassword);
+                    for (int i = 0; i < usersInfo->num_auth_keys - 1; i++) {
+                        free(usersInfo->auth_passwords[i]);
                     }
+                    free(usersInfo->auth_passwords);
                     return EXIT_FAILURE;
                 }
             }
         }
-    
+        
         free(copy);  // Free the original duplicate
         return EXIT_SUCCESS;
     }
     
-    
-    /**
-     * Parse user-info from @param line and assign it into @param user
-     * @return execution code
-     */
-    int parseUserInfo(struct UserInfo *user, char *line, int userIndex) {
-        // validate input
-        if (!user || !line) {
-            return ERROR_INVALID_INPUT_PARAMS;
-        }
-        
-        // temp pointer to traverse the line
-        char *ptr = line;
-    
-        // extract and store username
-        user->name = strdup(strsep(&ptr, ":"));
-        if (!user->name) {
-            return EXIT_FAILURE;
-        }
-    
-        // extract password into temp passwordBuffer
-        char *password = strsep(&ptr, ":\n");
-        if (!password) {
-            free(user->name);
-            return EXIT_FAILURE;
-        }
-        
-        // hash password and assign it
-        user->hashedPassword = generate_hashed_password(password);
-        if (!user->hashedPassword) {
-            free(user->name);
-            return EXIT_FAILURE;
-        }
-    
-        // generate  authentication keys
-        char **temp_keys = createAuthKeys(userIndex);
-        if (!temp_keys) {
-            free(user->name);
-            free(user->hashedPassword);
-            return EXIT_FAILURE;
-        }
-        
-        // assign authentication keys
-        for (int i = 0; i < MAX_AUTH_KEYS; i++) {
-            user->auth_passwords[i] = temp_keys[i];
-        }
-    
-        free(temp_keys);
-
-        return EXIT_SUCCESS;
-    }
 #pragma endregion
 
 #pragma region Auth-Key
@@ -470,7 +441,7 @@ int main() {
      * Checks if an authentication key exists in the user's stored keys.
      * @return an error code or success.
      */
-    int checkAuthKey(const char *authKey, const char *userAuthKeys[MAX_AUTH_KEYS]) {
+    int checkAuthKey(const char *authKey, const char **userAuthKeys, int numKeys) {
         // Verify authKey input parameter
         if (!authKey || strlen(authKey) != AUTH_KEY_SIZE) {
             return ERROR_INVALID_AUTH_KEY;
@@ -482,7 +453,7 @@ int main() {
         }
         
         // iterate through the user's authentication keys and compare with the provided key
-        for (int i = 0; i < MAX_AUTH_KEYS; i++) {
+        for (int i = 0; i < numKeys; i++) {
             // ensure userAuthKeys[i] is not NULL and compare input authKey with system authKey
             if (userAuthKeys[i] && strcmp(userAuthKeys[i], authKey) == 0) {
                 return EXIT_SUCCESS;
@@ -544,13 +515,18 @@ int main() {
         if (!fileInput) {
             return EXIT_FAILURE;
         }
-
         char lines[USERS_COUNT][LINE_SIZE];
         struct UserInfo users[USERS_COUNT]; 
 
         // read usera-info line-by-line and store it into UserInfo array 
         int userInd = 0;
+        bool isFirstLine = true;
         while (userInd < USERS_COUNT && fgets(lines[userInd], sizeof(lines[userInd]), fileInput)) {
+            if (isFirstLine) {
+                isFirstLine = false;
+                continue;
+            }
+            
             // parse user info from line into UserInfo struct
             int flag = parse_user_info(lines[userInd], &users[userInd]);
             if (flag != 0) {
@@ -559,7 +535,7 @@ int main() {
 
             // if we find user
             if(strcmp(users[userInd].name, user) == 0) {
-                for(int i = 0; i < MAX_AUTH_KEYS; i++) {
+                for(int i = 0; i < users[userInd].num_auth_keys; i++) {
                     // if entered auth key for this user exist
                     if(strcmp(users[userInd].auth_passwords[i], authKey) == 0) {
                         // free from memory and assign new value
@@ -572,7 +548,6 @@ int main() {
         }
 
         fclose(fileInput);
-
         // write it all into csv file with corrected data
         write_user_info_into_csv(users);
 
