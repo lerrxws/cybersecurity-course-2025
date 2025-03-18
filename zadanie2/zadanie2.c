@@ -23,7 +23,6 @@
 
 #define HASH_SIZE 32
 #define SALT "s0m3D3f@u1tS@lt"
-#define HASH_FUNCTION "$2b$"
 
 #define ASCII_START 33
 #define ASCII_END 126
@@ -213,16 +212,9 @@ int main() {
         }
     
         char line[LINE_SIZE];
-        bool isfirstLine = true;
         
         // read .csv file line-by-line and check for correct user
         while (fgets(line, sizeof(line), passwordFile)) {
-            // skip header
-            if (isfirstLine) { 
-                isfirstLine = false;
-                continue;
-            }
-    
             // parse user info from the line
             struct UserInfo *userInfo = calloc(1, sizeof(struct UserInfo));
             if (!userInfo) {
@@ -299,15 +291,8 @@ int main() {
             return EXIT_FAILURE;
         }
 
-        // write a header for csvFile
-        fprintf(csvFile, "Username:Hashed Password:OTP_KEYS\n");
-        
         int validUsers = 0;
         for (int i = 0; i < USERS_COUNT; i++) {
-            // if (!userInfo || !userInfo[i]) {
-            //     continue;
-            // }
-            // check if user data is valid
             if (!userInfo[i].name || !userInfo[i].hashedPassword) {
                 continue;
             }
@@ -323,9 +308,6 @@ int main() {
                     } else {
                         fprintf(csvFile, "%s,", userInfo[i].auth_passwords[j]);
                     }
-                } else {
-                    // empty field for missing auth keys
-                    // fprintf(csvFile, ",");
                 }
             }
             
@@ -420,6 +402,10 @@ int main() {
                     free(copy);
                     free(usersInfo->name);
                     free(usersInfo->hashedPassword);
+                    for (int i = 0; i < usersInfo->num_auth_keys - 1; i++) {
+                        free(usersInfo->auth_passwords[i]);
+                    }
+                    free(usersInfo->auth_passwords);
                     return EXIT_FAILURE;
                 }
 
@@ -528,14 +514,8 @@ int main() {
 
         // read usera-info line-by-line and store it into UserInfo array 
         int userInd = 0;
-        bool isFirstLine = true;
+        // bool isFirstLine = true;
         while (userInd < USERS_COUNT && fgets(lines[userInd], sizeof(lines[userInd]), fileInput)) {
-            if (isFirstLine) {
-                isFirstLine = false;
-                continue;
-            }
-            
-            // parse user info from line into UserInfo struct
             int flag = parse_user_info(lines[userInd], &users[userInd]);
             if (flag != 0) {
                 continue;
@@ -548,7 +528,8 @@ int main() {
                     if(strcmp(users[userInd].auth_passwords[i], authKey) == 0) {
                         // free from memory and assign new value
                         free(users[userInd].auth_passwords[i]);
-                        users[userInd].auth_passwords[i] = '\0';
+                        // users[userInd].auth_passwords[i] = '\0';
+                        users[userInd].auth_passwords[i] = NULL;
                     }
                 }
             }
