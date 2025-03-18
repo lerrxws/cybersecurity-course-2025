@@ -349,21 +349,29 @@ int main() {
      */
     void freeUserInfo(struct UserInfo *userInfo) {
         if (!userInfo) return;
-    
+        
         if (userInfo->name) {
             free(userInfo->name);
             userInfo->name = NULL;
         }
+        
         if (userInfo->hashedPassword) {
             free(userInfo->hashedPassword);
             userInfo->hashedPassword = NULL;
         }
-        for (int i = 0; i < userInfo->num_auth_keys; i++) {
-            if (userInfo->auth_passwords[i]) {
-                free(userInfo->auth_passwords[i]);
-                userInfo->auth_passwords[i] = NULL;
+        
+        if (userInfo->auth_passwords) {
+            for (int i = 0; i < userInfo->num_auth_keys; i++) {
+                if (userInfo->auth_passwords[i]) {
+                    free(userInfo->auth_passwords[i]);
+                    userInfo->auth_passwords[i] = NULL;
+                }
             }
+            free(userInfo->auth_passwords);
+            userInfo->auth_passwords = NULL;
         }
+        
+        userInfo->num_auth_keys = 0;
     }
     
 #pragma endregion
